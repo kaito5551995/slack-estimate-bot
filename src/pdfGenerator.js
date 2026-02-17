@@ -130,44 +130,57 @@ function generateEstimatePDF(data) {
             amount: 470
         };
 
+        const colWidth = {
+            name: 250,
+            quant: 60,
+            price: 80,
+            amount: 80
+        };
+
         // ヘッダー背景
         doc.rect(40, tableTop, 515, 20).fill('#f0f0f0').stroke(); // 薄いグレー
 
         // ヘッダー文字
         doc.fillColor('black').font('Gothic').fontSize(10);
-        doc.text('品  名  ・  規  格', colX.name + 10, tableTop + 5);
-        doc.text('数  量', colX.quant, tableTop + 5);
-        doc.text('単  価', colX.price, tableTop + 5);
-        doc.text('金  額', colX.amount, tableTop + 5);
+        // 位置微調整（上下中央寄せ）
+        const headerTextY = tableTop + 6;
+        doc.text('品  名  ・  規  格', colX.name + 10, headerTextY);
+        doc.text('数  量', colX.quant, headerTextY);
+        doc.text('単  価', colX.price, headerTextY);
+        doc.text('金  額', colX.amount, headerTextY);
 
         // ヘッダー線 (上下はrectで描画済み)
         doc.lineWidth(1).strokeColor('black');
 
         let y = tableTop + 20;
-        let pageHeightLimit = 750;
+        let pageHeightLimit = 730; // フッター余白確保のため少し早めに改ページ
 
         data.items.forEach((item, index) => {
+            doc.font('Gothic').fontSize(10);
+
+            // 品名の高さを計算 (折り返し対応)
+            const nameHeight = doc.heightOfString(item.name, { width: colWidth.name });
+            const rowHeight = Math.max(25, nameHeight + 10); // 最小25px、文字数に応じて拡張
+
             // ページネーション
-            if (y > pageHeightLimit) {
+            if (y + rowHeight > pageHeightLimit) {
                 doc.addPage();
                 y = 50;
+
                 // ヘッダー再描画
                 doc.rect(40, y, 515, 20).fill('#f0f0f0').stroke();
-                doc.fillColor('black').text('品  名  ・  規  格', colX.name + 10, y + 5);
-                doc.text('数  量', colX.quant, y + 5);
-                doc.text('単  価', colX.price, y + 5);
-                doc.text('金  額', colX.amount, y + 5);
+                doc.fillColor('black').text('品  名  ・  規  格', colX.name + 10, y + 6);
+                doc.text('数  量', colX.quant, y + 6);
+                doc.text('単  価', colX.price, y + 6);
+                doc.text('金  額', colX.amount, y + 6);
                 y += 20;
             }
-
-            // 行の高さ
-            const rowHeight = 25;
 
             // 縞模様（Construction Styleなら白地ですっきりが良いかもだが、読みやすさのため薄い線を入れる）
             doc.lineWidth(0.5).moveTo(40, y + rowHeight).lineTo(555, y + rowHeight).strokeColor('#cccccc').stroke();
 
-            // 品名
-            doc.fillColor('black').text(item.name, colX.name + 10, y + 7, { width: 250 });
+            // 品名 (垂直中央寄せは難しいので、上詰め+パディング)
+            doc.fillColor('black').text(item.name, colX.name + 10, y + 7, { width: colWidth.name });
 
             if (item.isExpense) {
                 // 諸経費: 数量単価空欄
@@ -190,7 +203,7 @@ function generateEstimatePDF(data) {
         });
 
         // ── 合計欄 (表の下) ──
-        y += 10;
+        y += 15; // 少しマージンを空ける
 
         // 合計ボックス
         const totalBoxX = 280;
@@ -199,14 +212,14 @@ function generateEstimatePDF(data) {
         // 小計
         doc.text('小  計', totalBoxX + 20, y);
         doc.text(`¥ ${totalAmount.toLocaleString()}`, totalBoxX + 190, y);
-        doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + 15).stroke();
-        y += 20;
+        doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + totalBoxW, y + 15).stroke();
+        y += 25; // 行間広め
 
         // 消費税
         doc.text('消費税 (10%)', totalBoxX + 20, y);
         doc.text(`¥ ${tax.toLocaleString()}`, totalBoxX + 190, y);
         doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + 15).stroke();
-        y += 20;
+        y += 25;
 
         // 合計
         doc.font('Mincho').fontSize(12); // 合計は明朝で
@@ -219,8 +232,8 @@ function generateEstimatePDF(data) {
 
 
         // ── 備考欄 (枠付き) ──
-        const remarksY = Math.max(y + 40, doc.y + 40);
-        if (remarksY > 700) { doc.addPage(); } // 簡易チェック
+        const remarksY = Math.max(y + 45, doc.y + 45);
+        if (remarksY > 720) { doc.addPage(); } // 簡易チェック
 
         doc.rect(40, remarksY, 515, 80).stroke();
         doc.font('Gothic').fontSize(9).text('備  考', 50, remarksY + 5);
@@ -238,19 +251,22 @@ function generateEstimatePDF(data) {
 }
 
 /**
- * 社印を描画する関数 (v3: リアルな角印)
+ * 社印を描画する関数 (v3.1: 透過・位置調整)
  * @param {PDFKit.PDFDocument} doc 
  * @param {number} x 
  * @param {number} y 
  */
 function drawSeal(doc, x, y) {
     const size = 56;
-    const color = '#b22222'; // FireBrick (少し暗めの赤でリアルに)
+    const color = '#b22222'; // FireBrick
 
     doc.save();
 
+    // ちょっと透けさせる（文字の上に乗っても読めるように）
+    doc.opacity(0.85);
+
     // 回転させて手押し感を出す (-2度)
-    // doc.rotate(-2, { origin: [x + size/2, y + size/2] });
+    doc.rotate(-2, { origin: [x + size / 2, y + size / 2] });
 
     // ── 外枠 (二重枠) ──
     doc.strokeColor(color);
@@ -268,7 +284,6 @@ function drawSeal(doc, x, y) {
     doc.font('Mincho'); // 明朝体必須
 
     // フォントサイズ計算
-    // 3行 × 3文字程度
     const fontSize = 11;
     doc.fontSize(fontSize);
 
