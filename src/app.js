@@ -148,7 +148,11 @@ app.view('estimate_modal', async ({ ack, view, body, client }) => {
         console.log(`Target Channel ID: ${targetChannelId}`);
 
         // SlackにPDFをアップロード
-        await client.files.uploadV2({
+        // Boltのclientでエラーが出るため、素のWebClientを使用
+        const { WebClient } = require('@slack/web-api');
+        const web = new WebClient(process.env.SLACK_BOT_TOKEN);
+
+        await web.files.uploadV2({
             channel_id: targetChannelId,
             initial_comment: `📄 *見積書を作成しました*\n\n` +
                 `• 宛先: ${clientCompany} / ${clientPerson} 様\n` +
