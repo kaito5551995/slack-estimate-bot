@@ -86,29 +86,76 @@ app.view('estimate_modal', async ({ ack, view, body, client }) => {
     const remarks = values.remarks?.value?.value || '';
 
     // 品目パース
-    const items = itemsText
+    const rawItems = itemsText
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .map(line => {
             // カンマ、全角カンマ、タブ区切りに対応
             const parts = line.split(/[,、\t]+/).map(p => p.trim());
-            return {
-                name: parts[0] || '',
-                quantity: parseInt(parts[1], 10) || 0,
-                unitPrice: parseInt(parts[2], 10) || 0
-            };
+            const name = parts[0] || '';
+            let quantityStr = parts[1] || '0';
+            let unitPrice = parseInt(parts[2], 10) || 0;
+            let quantity = 0;
+            let unit = '';
+
+            // 数量の単位パース (例: "100m", "10本", "一式")
+            if (quantityStr === '一式') {
+                quantity = 1;
+                unit = '式';
+            } else if (name.includes('諸経費') && (quantityStr.endsWith('%') || !isNaN(parseFloat(quantityStr)))) {
+                // 諸経費の場合は数量欄に%が入る
+                quantity = parseFloat(quantityStr.replace('%', ''));
+                unit = '%';
+            } else {
+                // 通常の数値+単位
+                const match = quantityStr.match(/^([\d.]+)(.*)$/);
+                if (match) {
+                    quantity = parseFloat(match[1]);
+                    unit = match[2].trim();
+                } else {
+                    quantity = 0;
+                }
+            }
+
+            return { name, quantity, unit, unitPrice, originalQuantity: quantityStr };
         })
         .filter(item => item.name);
 
-    if (items.length === 0) {
-        // DMでエラーメッセージを送信
+    if (rawItems.length === 0) {
         await client.chat.postMessage({
             channel: body.user.id,
             text: '⚠️ 品目が正しく入力されていません。「品名, 数量, 単価」の形式で入力してください。'
         });
         return;
     }
+
+    // 計算ロジック（法定福利費・諸経費）
+    const items = [];
+    let taxableSubtotal = 0; // 法定福利費・諸経費の計算対象となる小計
+
+    // まず通常品目を計算
+    rawItems.forEach(item => {
+        if (!item.name.includes('法定福利費') && !item.name.includes('諸経費')) {
+            const amount = Math.floor(item.quantity * item.unitPrice);
+            items.push({ ...item, amount });
+            taxableSubtotal += amount;
+        }
+    });
+
+    // 次に諸経費・法定福利費を計算
+    rawItems.forEach(item => {
+        if (item.name.includes('諸経費')) {
+            // 諸経費: 対象小計 × %
+            const rate = item.quantity / 100;
+            const amount = Math.floor(taxableSubtotal * rate);
+            items.push({ ...item, unitPrice: 0, amount, isExpense: true }); // PDF表示用にフラグ立て
+        } else if (item.name.includes('法定福利費')) {
+            // 法定福利費: 対象小計 × 16.5%
+            const amount = Math.floor(taxableSubtotal * 0.165);
+            items.push({ ...item, quantity: 1, unit: '式', unitPrice: amount, amount, isWelfare: true });
+        }
+    });
 
     try {
         // PDF生成
@@ -119,10 +166,10 @@ app.view('estimate_modal', async ({ ack, view, body, client }) => {
             remarks: remarks || undefined
         });
 
-        // 合計金額の計算
+        // 合計金額の計算（PDF生成後のitemsには計算済みのamountが入っているはずだが、念のため再計算）
         let subtotal = 0;
         items.forEach(item => {
-            subtotal += item.quantity * item.unitPrice;
+            subtotal += item.amount;
         });
         const total = subtotal + Math.floor(subtotal * 0.1);
 
