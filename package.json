@@ -1,0 +1,19 @@
+{
+  "name": "slack-estimate-pdf",
+  "version": "1.0.0",
+  "description": "Slack Bot で見積書PDFを自動生成するアプリ",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node src/app.js",
+    "test:pdf": "node src/testPdf.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "pdfkit": "^0.15.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
