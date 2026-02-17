@@ -91,8 +91,15 @@ app.view('estimate_modal', async ({ ack, view, body, client }) => {
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .map(line => {
-            // カンマ、全角カンマ、タブ区切りに対応
-            const parts = line.split(/[,、\t]+/).map(p => p.trim());
+            // 全角文字の正規化
+            // 1. 全角読点「、」を半角カンマ「,」に
+            // 2. 全角数字「０-９」を半角数字「0-9」に
+            let normalizedLine = line
+                .replace(/、/g, ',')
+                .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+
+            // カンマ、タブで分割
+            const parts = normalizedLine.split(/[,，\t]+/).map(p => p.trim());
             const name = parts[0] || '';
             let quantityStr = parts[1] || '0';
             let unitPrice = parseInt(parts[2], 10) || 0;
