@@ -131,11 +131,18 @@ app.view('estimate_modal', async ({ ack, view, body, client }) => {
         const dateStr = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`;
         const fileName = `見積書_${clientCompany}_${dateStr}.pdf`;
 
+        // DMチャンネルを開いてIDを取得
+        const { channel } = await client.conversations.open({
+            users: body.user.id
+        });
+
+        if (!channel || !channel.id) {
+            throw new Error('DMチャンネルを開けませんでした');
+        }
+
         // SlackにPDFをアップロード
-        // files.uploadは廃止されたため、files.uploadV2を使用
-        // file_uploads配列の中にfileとfilenameを指定する
         await client.files.uploadV2({
-            channel_id: body.user.id,
+            channel_id: channel.id,
             initial_comment: `📄 *見積書を作成しました*\n\n` +
                 `• 宛先: ${clientCompany} / ${clientPerson} 様\n` +
                 `• 品目数: ${items.length}件\n` +
