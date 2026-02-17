@@ -2,7 +2,7 @@ services:
   - type: web
     name: slack-estimate-bot
     runtime: node
-    buildCommand: npm install && chmod +x download-fonts.sh && ./download-fonts.sh
+    buildCommand: npm install
     startCommand: node src/app.js
     envVars:
       - key: SLACK_BOT_TOKEN

@@ -1,6 +1,3 @@
 #!/bin/bash
-echo "フォントをダウンロード中..."
-mkdir -p fonts
-curl -L -o fonts/NotoSansJP-Regular.otf https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf
-curl -L -o fonts/NotoSansJP-Bold.otf https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Bold.otf
-echo "完了！"
+# フォントはGitリポジトリに含まれているため、ダウンロード処理は不要です。
+echo "Fonts are managed via Git. Skipping download."

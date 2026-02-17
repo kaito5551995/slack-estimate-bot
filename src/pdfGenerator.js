@@ -120,8 +120,23 @@ function generateEstimatePDF(data) {
         doc.text('MAIL: info@minato-anzen.com', companyX, infoY + 60);
 
         // ── 明細表 ──
-        const tableTop = 280; // 固定開始位置
-        doc.y = tableTop;
+        // 固定位置 (280) だとヘッダー情報（御見積金額など）と被る可能性があるため、
+        // 直前の doc.y から十分なマージンを取って開始位置を決定する。
+        // ただし、位置が高すぎるとバランスが悪いので、最低値 (minTableTop) を設定する。
+        const minTableTop = 280;
+        const dynamicTableTop = doc.y + 40; // 直前の要素から40px空ける
+        const tableTop = Math.max(minTableTop, dynamicTableTop);
+
+        // もし開始位置がページ下部に近すぎる場合は改ページ
+        if (tableTop > 600) {
+            doc.addPage();
+            doc.y = 50;
+        } else {
+            doc.y = tableTop;
+        }
+
+        // 改ページ直後かもしれないので再取得
+        const currentTableTop = doc.y;
 
         const colX = {
             name: 40,
@@ -138,12 +153,12 @@ function generateEstimatePDF(data) {
         };
 
         // ヘッダー背景
-        doc.rect(40, tableTop, 515, 20).fill('#f0f0f0').stroke(); // 薄いグレー
+        doc.rect(40, currentTableTop, 515, 20).fill('#f0f0f0').stroke(); // 薄いグレー
 
         // ヘッダー文字
         doc.fillColor('black').font('Gothic').fontSize(10);
         // 位置微調整（上下中央寄せ）
-        const headerTextY = tableTop + 6;
+        const headerTextY = currentTableTop + 6;
         doc.text('品  名  ・  規  格', colX.name + 10, headerTextY);
         doc.text('数  量', colX.quant, headerTextY);
         doc.text('単  価', colX.price, headerTextY);
@@ -152,8 +167,8 @@ function generateEstimatePDF(data) {
         // ヘッダー線 (上下はrectで描画済み)
         doc.lineWidth(1).strokeColor('black');
 
-        let y = tableTop + 20;
-        let pageHeightLimit = 680; // 余裕を持って早めに改ページする (730 -> 680)
+        let y = currentTableTop + 20;
+        let pageHeightLimit = 700; // フッター余白
 
         data.items.forEach((item, index) => {
             doc.font('Gothic').fontSize(10);
@@ -215,7 +230,7 @@ function generateEstimatePDF(data) {
             y = 50;
         }
 
-        y += 15; // 少しマージンを空ける
+        y += 20; // 確実に空ける
 
         // 合計ボックス
         const totalBoxX = 280;
@@ -243,13 +258,12 @@ function generateEstimatePDF(data) {
         doc.lineWidth(0.5).moveTo(totalBoxX, y + 28).lineTo(totalBoxX + totalBoxW, y + 28).stroke();
 
 
-        // ── 備考欄 (枠付き) ──
-        // 備考欄は約100px必要
-        if (y + 120 > 750) { // ページ末尾ギリギリまで使う
+        // ── 備考欄 ──
+        if (y + 120 > 750) {
             doc.addPage();
             y = 50;
         } else {
-            y += 40; // 通常の間隔
+            y += 40;
         }
 
         const remarksY = y;
@@ -270,7 +284,7 @@ function generateEstimatePDF(data) {
 }
 
 /**
- * 社印を描画する関数 (v3.1: 透過・位置調整)
+ * 社印を描画する関数 (v3.3: 文字是正・透過)
  * @param {PDFKit.PDFDocument} doc 
  * @param {number} x 
  * @param {number} y 
@@ -280,96 +294,39 @@ function drawSeal(doc, x, y) {
     const color = '#b22222'; // FireBrick
 
     doc.save();
-
-    // ちょっと透けさせる（文字の上に乗っても読めるように）
     doc.opacity(0.85);
-
-    // 回転させて手押し感を出す (-2度)
     doc.rotate(-2, { origin: [x + size / 2, y + size / 2] });
 
-    // ── 外枠 (二重枠) ──
+    // 枠
     doc.strokeColor(color);
-
-    // 太い外枠
     doc.lineWidth(2.5);
-    doc.rect(x, y, size, size).stroke();
+    doc.rect(x, y, size, size).stroke(); // 外枠
+    doc.lineWidth(1);
+    doc.rect(x + 3, y + 3, size - 6, size - 6).stroke(); // 内枠
 
-    // 細い内枠
-    doc.lineWidth(1); // 細く
-    doc.rect(x + 3, y + 3, size - 6, size - 6).stroke();
-
-    // ── 文字 (縦書き 3行) ──
+    // 文字
     doc.fillColor(color);
-    doc.font('Mincho'); // 明朝体必須
+    doc.font('Mincho');
+    doc.fontSize(11); // 少し大きめに
 
-    // フォントサイズ計算
-    const fontSize = 11;
-    doc.fontSize(fontSize);
-
-    // 行間
-    const lineHeight = fontSize;
-    const charSpacing = 3;
-
-    // 1行目: 株式会社
-    // 2行目: ミナト安全
-    // 3行目: 施設之印
-
-    // ただし、文字数に合わせて調整
-    // 「㈱ミナト」
-    // 「安全施設」
-    // 「 之 印 」
-
-    // 座標計算
-    const colWidth = (size - 6) / 3;
-    const startX = x + 3 + colWidth * 2.1; // 右から書くのが正式だが、横書き3行で縦に見せるのが簡単
-    // いや、角印は通常「右列→左列」の縦書き
-
-    const rightColX = x + size - colWidth - 2;
-    const centerColX = x + size / 2 - 5;
-    const leftColX = x + 6;
-
-    const startTextY = y + 6;
-
-    // 右列: 株式 (株)
-    doc.text('株', rightColX, startTextY);
-    doc.text('式', rightColX, startTextY + lineHeight + charSpacing);
-    doc.text('会', rightColX, startTextY + (lineHeight + charSpacing) * 2);
-    // 社が溢れるので、
-    // 「株式会社」を右列に詰めるのが難しい。
-    // 一般的には「株式会社」で1行、「ミナト安全」で1行、「施設之印」で1行。
-    // 右から左へ。
-
-    // リセットして描画
-    // 右列
-    drawVerticalText(doc, '株式', rightColX, startTextY + 5, fontSize, charSpacing);
-    drawVerticalText(doc, '会社', rightColX, startTextY + 25, fontSize, charSpacing);
-    // うまくいかないので、シンプルに「横書きの改行」でそれっぽく見せる
-
-    // 配置リセット
-    // 1行目 (上段): 株 式 会 社
-    // 2行目 (中段): ミナト安全
-    // 3行目 (下段): 施設之印
-    // これだと横書きに見える。
-
-    // やはり縦書き風に自力配置
-    // 右列: 株式会社 (4文字はきついので、詰める)
-    // 中列: ミナト安全 (5文字はきつい)
-    // 左列: 施設之印 (4文字)
-
-    // バランス調整:
-    // 右: (株)ミナト
+    // 配置: 縦書き3行
+    // 右: ㈱ミナト
     // 中: 安全施設
     // 左: 之印
 
-    // これを右から配置
+    // 座標定義
+    // 右: ㈱ミナト
+    // 中: 安全施設
+    // 左: 之印
+
     const col1X = x + size - 16; // 右
     const col2X = x + size / 2 - 6; // 中
     const col3X = x + 6;         // 左
 
-    // 右: (株)ミナト
     const textY = y + 5;
     const spacing = 12; // 文字送り
 
+    // 右: ㈱ミナト
     doc.text('㈱', col1X, textY);
     doc.text('ミ', col1X, textY + spacing);
     doc.text('ナ', col1X, textY + spacing * 2);
@@ -382,7 +339,6 @@ function drawSeal(doc, x, y) {
     doc.text('設', col2X, textY + spacing * 3);
 
     // 左: 之印
-    // 中央寄せしたい
     const stampY = textY + spacing + 6;
     doc.text('之', col3X, stampY);
     doc.text('印', col3X, stampY + spacing);
@@ -399,17 +355,6 @@ function drawSeal(doc, x, y) {
     doc.restore();
 
     doc.restore();
-}
-
-/**
- * 縦書きヘルパー (簡易)
- */
-function drawVerticalText(doc, text, x, y, size, spacing) {
-    let currentY = y;
-    for (let i = 0; i < text.length; i++) {
-        doc.text(text[i], x, currentY);
-        currentY += size + spacing;
-    }
 }
 
 module.exports = { generateEstimatePDF };
