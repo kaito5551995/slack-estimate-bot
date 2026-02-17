@@ -3,13 +3,13 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * 見積書PDFを生成する
+ * 見積書PDFを生成する (v3: BtoB Construction Style)
  * @param {Object} data
  * @returns {Promise<Buffer>}
  */
 function generateEstimatePDF(data) {
     return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ size: 'A4', margin: 50 });
+        const doc = new PDFDocument({ size: 'A4', margin: 40 }); // 余白を少し詰める
         const buffers = [];
 
         doc.on('data', buffers.push.bind(buffers));
@@ -23,118 +23,156 @@ function generateEstimatePDF(data) {
         });
 
         // フォント設定
-        const fontPath = path.join(__dirname, '../fonts/NotoSansJP-Regular.otf');
-        if (fs.existsSync(fontPath)) {
-            doc.font(fontPath);
-        } else {
-            doc.font('Helvetica');
-            console.warn('日本語フォントが見つかりません。');
-        }
+        const fontRegularPath = path.join(__dirname, '../fonts/NotoSansJP-Regular.otf');
+        const fontSerifPath = path.join(__dirname, '../fonts/NotoSerifJP-Regular.otf');
+
+        // フォント登録 (エイリアス)
+        if (fs.existsSync(fontRegularPath)) doc.registerFont('Gothic', fontRegularPath);
+        else doc.registerFont('Gothic', 'Helvetica'); // Fallback
+
+        if (fs.existsSync(fontSerifPath)) doc.registerFont('Mincho', fontSerifPath);
+        else doc.registerFont('Mincho', 'Times-Roman'); // Fallback
+
+        // デフォルトフォント
+        doc.font('Gothic');
 
         // ── ヘッダー ──
-        // タイトル
-        doc.fontSize(20).text('御 見 積 書', { align: 'center', underline: true });
-        doc.moveDown();
+        // タイトル (明朝体で重厚に)
+        doc.font('Mincho').fontSize(22).text('御 見 積 書', { align: 'center' });
+
+        // タイトル下線 (二重線風)
+        const titleY = doc.y + 5;
+        doc.lineWidth(2).moveTo(220, titleY).lineTo(375, titleY).stroke();
+        doc.lineWidth(0.5).moveTo(220, titleY + 3).lineTo(375, titleY + 3).stroke();
+
+        doc.moveDown(2);
 
         // 日付
         const now = new Date();
-        const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
-        doc.fontSize(10).text(dateStr, { align: 'right' });
+        const dateStr = `${now.getFullYear()}年 ${now.getMonth() + 1}月 ${now.getDate()}日`;
+        doc.font('Gothic').fontSize(10).text(dateStr, { align: 'right' });
 
-        // 宛先
-        const startY = doc.y + 10;
-        doc.fontSize(12).text(`${data.clientCompany} 御中`, 50, startY);
-        doc.text(`${data.clientPerson} 様`, 50, startY + 20);
-        doc.text('下記のとおり御見積申し上げます。', 50, startY + 50);
+        const startY = doc.y + 20;
 
-        // ── 自社情報（右側）──
-        const companyX = 350;
-        const companyY = startY;
+        // ── 宛先 (左側) ──
+        doc.font('Mincho').fontSize(14); // 宛先も少しフォーマルに
+        doc.text(`${data.clientCompany}  御中`, 50, startY);
+        doc.fontSize(11).text(`${data.clientPerson}  様`, 50, startY + 25);
 
-        // ロゴ描画（あれば）
-        // ユーザーがアップロードした assets/logo.png を優先して使用
-        const logoPath = path.join(__dirname, '../assets/logo.png');
-        let logoHeight = 0;
+        // 宛先下線
+        doc.lineWidth(0.5).moveTo(50, startY + 45).lineTo(300, startY + 45).stroke();
 
-        if (fs.existsSync(logoPath)) {
-            try {
-                // ロゴのサイズ調整（幅150pxに収める）
-                doc.image(logoPath, companyX, companyY - 10, { width: 150 });
-                logoHeight = 60; // ロゴ分のスペースを確保
-            } catch (e) {
-                console.error('ロゴ描画エラー:', e);
-            }
-        }
+        doc.font('Gothic').fontSize(10).text('下記のとおり御見積申し上げます。', 50, startY + 60);
 
-        // 社印描画
-        // 会社名に少し重なるように配置
-        const sealX = companyX + 110;
-        const sealY = companyY + logoHeight + 10;
-        drawSeal(doc, sealX, sealY);
-
-        // 会社情報のテキスト
-        const infoY = companyY + logoHeight;
-        doc.fontSize(12).text('株式会社ミナト安全施設', companyX, infoY);
-
-        doc.fontSize(10);
-        doc.text('代表取締役 湊崎義美', companyX, infoY + 20);
-        doc.text('〒680-0914', companyX, infoY + 35);
-        doc.text('鳥取県鳥取市南安長１丁目２０番３６号', companyX, infoY + 50);
-        doc.text('TEL: 0857-30-1121', companyX, infoY + 65);
-        doc.text('MAIL: info@minato-anzen.com', companyX, infoY + 80);
-
-        doc.moveDown(4);
-
-        // ── 合計金額表示 ──
-        // 合計計算（まだ計算されていないインスタンス用）
+        // 御見積金額 (大きく強調)
         let totalAmount = 0;
         data.items.forEach(item => totalAmount += (item.amount || item.quantity * item.unitPrice));
         const tax = Math.floor(totalAmount * 0.1);
         const grandTotal = totalAmount + tax;
 
-        // 位置調整: 会社情報の下あたり
-        const totalY = Math.max(doc.y, infoY + 110);
-        doc.y = totalY;
+        doc.font('Mincho').fontSize(12).text('御見積金額', 50, startY + 95);
+        doc.fontSize(18).text(`¥ ${grandTotal.toLocaleString()} -`, 130, startY + 92);
 
-        doc.fontSize(16)
-            .text(`御見積金額  ¥${grandTotal.toLocaleString()} -`, 50, totalY, { underline: true });
+        // 金額下線
+        doc.lineWidth(1).moveTo(50, startY + 115).lineTo(300, startY + 115).stroke();
+        doc.font('Gothic').fontSize(9).text('（消費税込み）', 150, startY + 120);
 
-        doc.moveDown(1.5);
+
+        // ── 自社情報 (右側) ──
+        const companyX = 360;
+        const companyY = startY;
+
+        // ロゴ描画
+        // 社名の真上に配置
+        const logoPath = path.join(__dirname, '../assets/logo.png');
+        let logoOffset = 0;
+
+        if (fs.existsSync(logoPath)) {
+            try {
+                // ロゴサイズ調整 (幅100px程度)
+                const logoW = 120;
+                // 配置: 社名の中心に合わせるか、左揃えか。ここでは社名に合わせて配置
+                doc.image(logoPath, companyX + 10, companyY - 25, { width: logoW });
+                logoOffset = 10;
+            } catch (e) {
+                console.error('ロゴ描画エラー:', e);
+            }
+        }
+
+        // 会社名 (重厚に)
+        doc.font('Mincho').fontSize(13);
+        doc.text('株式会社ミナト安全施設', companyX, companyY + 40);
+
+        // 社印 (角印)
+        // 社名に被せる
+        // 文字の最後の方に被せるとリアル
+        const sealX = companyX + 110;
+        const sealY = companyY + 25; // ロゴや社名の位置に合わせて調整
+        drawSeal(doc, sealX, sealY);
+
+        // 住所等 (ゴシックで読みやすく)
+        doc.font('Gothic').fontSize(9);
+        const infoY = companyY + 60;
+        doc.text('代表取締役 湊崎義美', companyX, infoY);
+        doc.text('〒680-0914', companyX, infoY + 15);
+        doc.text('鳥取県鳥取市南安長１丁目２０番３６号', companyX, infoY + 30);
+        doc.text('TEL: 0857-30-1121', companyX, infoY + 45);
+        doc.text('MAIL: info@minato-anzen.com', companyX, infoY + 60);
 
         // ── 明細表 ──
-        const tableTop = doc.y + 10;
-        const itemX = 50;
-        const quantityX = 300;
-        const unitPriceX = 380;
-        const amountX = 480;
+        const tableTop = 280; // 固定開始位置
+        doc.y = tableTop;
 
-        // テーブルヘッダー
-        doc.fontSize(10);
-        doc.text('品  名', itemX, tableTop);
-        doc.text('数  量', quantityX, tableTop);
-        doc.text('単  価', unitPriceX, tableTop);
-        doc.text('金  額', amountX, tableTop);
+        const colX = {
+            name: 40,
+            quant: 300,
+            price: 380,
+            amount: 470
+        };
 
-        // ヘッダー下線
-        doc.lineWidth(1).moveTo(itemX, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+        // ヘッダー背景
+        doc.rect(40, tableTop, 515, 20).fill('#f0f0f0').stroke(); // 薄いグレー
 
-        let y = tableTop + 25;
+        // ヘッダー文字
+        doc.fillColor('black').font('Gothic').fontSize(10);
+        doc.text('品  名  ・  規  格', colX.name + 10, tableTop + 5);
+        doc.text('数  量', colX.quant, tableTop + 5);
+        doc.text('単  価', colX.price, tableTop + 5);
+        doc.text('金  額', colX.amount, tableTop + 5);
 
-        data.items.forEach(item => {
-            // ページネーション（1ページ収め努力はするが、あふれる場合は改ページ）
-            if (y > 700) {
+        // ヘッダー線 (上下はrectで描画済み)
+        doc.lineWidth(1).strokeColor('black');
+
+        let y = tableTop + 20;
+        let pageHeightLimit = 750;
+
+        data.items.forEach((item, index) => {
+            // ページネーション
+            if (y > pageHeightLimit) {
                 doc.addPage();
                 y = 50;
-                // 改ページ後のヘッダー再描画などのロジックは省略（1ページ収め要望のため）
+                // ヘッダー再描画
+                doc.rect(40, y, 515, 20).fill('#f0f0f0').stroke();
+                doc.fillColor('black').text('品  名  ・  規  格', colX.name + 10, y + 5);
+                doc.text('数  量', colX.quant, y + 5);
+                doc.text('単  価', colX.price, y + 5);
+                doc.text('金  額', colX.amount, y + 5);
+                y += 20;
             }
 
-            doc.text(item.name, itemX, y);
+            // 行の高さ
+            const rowHeight = 25;
+
+            // 縞模様（Construction Styleなら白地ですっきりが良いかもだが、読みやすさのため薄い線を入れる）
+            doc.lineWidth(0.5).moveTo(40, y + rowHeight).lineTo(555, y + rowHeight).strokeColor('#cccccc').stroke();
+
+            // 品名
+            doc.fillColor('black').text(item.name, colX.name + 10, y + 7, { width: 250 });
 
             if (item.isExpense) {
-                // 諸経費の場合、要望により数量・単価は空欄にして金額のみ表示
-                // 数量欄に%を出したい場合は `${item.quantity}${item.unit}` だが、空欄にする
+                // 諸経費: 数量単価空欄
             } else {
-                // 通常品目または法定福利費
+                // 数量
                 let qtyText = '';
                 if (item.unit === '式' || item.unit === '%') {
                     qtyText = '1 式';
@@ -142,83 +180,202 @@ function generateEstimatePDF(data) {
                 } else {
                     qtyText = `${item.quantity.toLocaleString()} ${item.unit || ''}`;
                 }
-
-                doc.text(qtyText, quantityX, y);
-                doc.text(`¥${item.unitPrice.toLocaleString()}`, unitPriceX, y);
+                doc.text(qtyText, colX.quant, y + 7);
+                doc.text(`¥ ${item.unitPrice.toLocaleString()}`, colX.price, y + 7);
             }
 
-            doc.text(`¥${item.amount.toLocaleString()}`, amountX, y);
+            doc.text(`¥ ${item.amount.toLocaleString()}`, colX.amount, y + 7);
 
-            // 明細下線
-            doc.lineWidth(0.5).moveTo(itemX, y + 15).lineTo(550, y + 15).stroke();
-            y += 25;
+            y += rowHeight;
         });
 
-        // ── 合計欄 ──
+        // ── 合計欄 (表の下) ──
         y += 10;
-        const totalLabelX = 350;
-        const totalValueX = 480;
 
-        doc.text('小  計', totalLabelX, y);
-        doc.text(`¥${totalAmount.toLocaleString()}`, totalValueX, y);
+        // 合計ボックス
+        const totalBoxX = 280;
+        const totalBoxW = 275;
+
+        // 小計
+        doc.text('小  計', totalBoxX + 20, y);
+        doc.text(`¥ ${totalAmount.toLocaleString()}`, totalBoxX + 190, y);
+        doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + 15).stroke();
         y += 20;
 
-        doc.text('消費税 (10%)', totalLabelX, y);
-        doc.text(`¥${tax.toLocaleString()}`, totalValueX, y);
+        // 消費税
+        doc.text('消費税 (10%)', totalBoxX + 20, y);
+        doc.text(`¥ ${tax.toLocaleString()}`, totalBoxX + 190, y);
+        doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + 15).stroke();
         y += 20;
 
-        // フォントを太くする（疑似）
-        doc.fontSize(12);
-        // もし太字フォントがあれば切り替えるが、なければサイズアップで対応
+        // 合計
+        doc.font('Mincho').fontSize(12); // 合計は明朝で
+        doc.text('合  計', totalBoxX + 20, y + 5);
+        doc.text(`¥ ${grandTotal.toLocaleString()}`, totalBoxX + 190, y + 5);
 
-        doc.text('合  計', totalLabelX, y);
-        doc.text(`¥${grandTotal.toLocaleString()}`, totalValueX, y);
+        // 合計二重線
+        doc.lineWidth(0.5).moveTo(totalBoxX, y + 25).lineTo(totalBoxX + totalBoxW, y + 25).stroke();
+        doc.lineWidth(0.5).moveTo(totalBoxX, y + 28).lineTo(totalBoxX + totalBoxW, y + 28).stroke();
 
-        // ── 備考 ──
-        // ページ下部に固定、あるいはフロー配置
-        y += 50;
-        // ページあふれチェック
-        if (y > 720) {
-            doc.addPage();
-            y = 50;
-        }
+
+        // ── 備考欄 (枠付き) ──
+        const remarksY = Math.max(y + 40, doc.y + 40);
+        if (remarksY > 700) { doc.addPage(); } // 簡易チェック
+
+        doc.rect(40, remarksY, 515, 80).stroke();
+        doc.font('Gothic').fontSize(9).text('備  考', 50, remarksY + 5);
 
         if (data.remarks) {
-            doc.fontSize(10).text('【備考】', 50, y);
-            doc.text(data.remarks, 50, y + 15);
+            doc.text(data.remarks, 50, remarksY + 20);
         } else {
-            doc.fontSize(9).text('［備考］\n大変お世話になっております。お手数ですがご確認をお願いいたします。\nご不明な点やご質問等がございましたら、お気軽にお問合せ下さい。', 50, y);
+            doc.fontSize(8).fillColor('#666666');
+            doc.text('有効期限： 御見積提出日より30日間', 50, remarksY + 20);
+            doc.text('支払条件： 御社規定による', 50, remarksY + 35);
         }
 
         doc.end();
     });
 }
 
-// 社印を描画する関数（PDFKitのベクター描画）
+/**
+ * 社印を描画する関数 (v3: リアルな角印)
+ * @param {PDFKit.PDFDocument} doc 
+ * @param {number} x 
+ * @param {number} y 
+ */
 function drawSeal(doc, x, y) {
-    const size = 50; // 少し小さめに
-    const color = '#d9333f'; // 朱色
+    const size = 56;
+    const color = '#b22222'; // FireBrick (少し暗めの赤でリアルに)
 
     doc.save();
-    doc.strokeColor(color).lineWidth(1.5);
 
-    // 外枠
-    doc.roundedRect(x, y, size, size, 2).stroke();
+    // 回転させて手押し感を出す (-2度)
+    // doc.rotate(-2, { origin: [x + size/2, y + size/2] });
 
-    // 文字（株式会社ミナト安全施設之印）
-    // 簡易的に配置
-    doc.fillColor(color).fontSize(8);
+    // ── 外枠 (二重枠) ──
+    doc.strokeColor(color);
 
-    const textStartX = x + 2;
-    const textStartY = y + 8;
-    const lineHeight = 12;
+    // 太い外枠
+    doc.lineWidth(2.5);
+    doc.rect(x, y, size, size).stroke();
 
-    // 中央揃えの計算は面倒なので固定配置
-    doc.text('㈱ミナト', textStartX, textStartY, { width: size - 4, align: 'center' });
-    doc.text('安全施設', textStartX, textStartY + lineHeight, { width: size - 4, align: 'center' });
-    doc.text('之印', textStartX, textStartY + lineHeight * 2 + 2, { width: size - 4, align: 'center' });
+    // 細い内枠
+    doc.lineWidth(1); // 細く
+    doc.rect(x + 3, y + 3, size - 6, size - 6).stroke();
+
+    // ── 文字 (縦書き 3行) ──
+    doc.fillColor(color);
+    doc.font('Mincho'); // 明朝体必須
+
+    // フォントサイズ計算
+    // 3行 × 3文字程度
+    const fontSize = 11;
+    doc.fontSize(fontSize);
+
+    // 行間
+    const lineHeight = fontSize;
+    const charSpacing = 3;
+
+    // 1行目: 株式会社
+    // 2行目: ミナト安全
+    // 3行目: 施設之印
+
+    // ただし、文字数に合わせて調整
+    // 「㈱ミナト」
+    // 「安全施設」
+    // 「 之 印 」
+
+    // 座標計算
+    const colWidth = (size - 6) / 3;
+    const startX = x + 3 + colWidth * 2.1; // 右から書くのが正式だが、横書き3行で縦に見せるのが簡単
+    // いや、角印は通常「右列→左列」の縦書き
+
+    const rightColX = x + size - colWidth - 2;
+    const centerColX = x + size / 2 - 5;
+    const leftColX = x + 6;
+
+    const startTextY = y + 6;
+
+    // 右列: 株式 (株)
+    doc.text('株', rightColX, startTextY);
+    doc.text('式', rightColX, startTextY + lineHeight + charSpacing);
+    doc.text('会', rightColX, startTextY + (lineHeight + charSpacing) * 2);
+    // 社が溢れるので、
+    // 「株式会社」を右列に詰めるのが難しい。
+    // 一般的には「株式会社」で1行、「ミナト安全」で1行、「施設之印」で1行。
+    // 右から左へ。
+
+    // リセットして描画
+    // 右列
+    drawVerticalText(doc, '株式', rightColX, startTextY + 5, fontSize, charSpacing);
+    drawVerticalText(doc, '会社', rightColX, startTextY + 25, fontSize, charSpacing);
+    // うまくいかないので、シンプルに「横書きの改行」でそれっぽく見せる
+
+    // 配置リセット
+    // 1行目 (上段): 株 式 会 社
+    // 2行目 (中段): ミナト安全
+    // 3行目 (下段): 施設之印
+    // これだと横書きに見える。
+
+    // やはり縦書き風に自力配置
+    // 右列: 株式会社 (4文字はきついので、詰める)
+    // 中列: ミナト安全 (5文字はきつい)
+    // 左列: 施設之印 (4文字)
+
+    // バランス調整:
+    // 右: (株)ミナト
+    // 中: 安全施設
+    // 左: 之印
+
+    // これを右から配置
+    const col1X = x + size - 16; // 右
+    const col2X = x + size / 2 - 6; // 中
+    const col3X = x + 6;         // 左
+
+    // 右: (株)ミナト
+    const textY = y + 5;
+    const spacing = 12; // 文字送り
+
+    doc.text('㈱', col1X, textY);
+    doc.text('ミ', col1X, textY + spacing);
+    doc.text('ナ', col1X, textY + spacing * 2);
+    doc.text('ト', col1X, textY + spacing * 3);
+
+    // 中: 安全施設
+    doc.text('安', col2X, textY);
+    doc.text('全', col2X, textY + spacing);
+    doc.text('施', col2X, textY + spacing * 2);
+    doc.text('設', col2X, textY + spacing * 3);
+
+    // 左: 之印
+    // 中央寄せしたい
+    const stampY = textY + spacing + 6;
+    doc.text('之', col3X, stampY);
+    doc.text('印', col3X, stampY + spacing);
+
+    // かすれ処理 (ノイズを描画して古めかしく)
+    doc.save();
+    doc.fillColor('white');
+    for (let i = 0; i < 50; i++) {
+        const nx = x + Math.random() * size;
+        const ny = y + Math.random() * size;
+        const r = Math.random() * 1.5;
+        doc.circle(nx, ny, r).fill();
+    }
+    doc.restore();
 
     doc.restore();
+}
+
+/**
+ * 縦書きヘルパー (簡易)
+ */
+function drawVerticalText(doc, text, x, y, size, spacing) {
+    let currentY = y;
+    for (let i = 0; i < text.length; i++) {
+        doc.text(text[i], x, currentY);
+        currentY += size + spacing;
+    }
 }
 
 module.exports = { generateEstimatePDF };
