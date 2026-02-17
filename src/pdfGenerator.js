@@ -71,11 +71,12 @@ function generateEstimatePDF(data) {
         const grandTotal = totalAmount + tax;
 
         doc.font('Mincho').fontSize(12).text('御見積金額', 50, startY + 95);
-        doc.fontSize(18).text(`¥ ${grandTotal.toLocaleString()} -`, 130, startY + 92);
+        // 修正: 「-」を「(税込)」に変更
+        doc.fontSize(18).text(`¥ ${grandTotal.toLocaleString()} (税込)`, 130, startY + 92);
 
         // 金額下線
         doc.lineWidth(1).moveTo(50, startY + 115).lineTo(300, startY + 115).stroke();
-        doc.font('Gothic').fontSize(9).text('（消費税込み）', 150, startY + 120);
+        // 修正: 「（消費税込み）」の行を削除
 
 
         // ── 自社情報 (右側) ──
@@ -202,14 +203,13 @@ function generateEstimatePDF(data) {
             // 品名
             doc.fillColor('black').text(item.name, colX.name + 10, y + 8, { width: colWidth.name, lineGap: 2 });
 
-            if (item.isExpense) {
-                // 諸経費
+            if (item.isExpense || item.isWelfare) {
+                // 修正: 諸経費および法定福利費は数量・単価を空欄にする
             } else {
                 // 数量
                 let qtyText = '';
                 if (item.unit === '式' || item.unit === '%') {
                     qtyText = '1 式';
-                    if (item.isWelfare) qtyText = '1 式';
                 } else {
                     qtyText = `${item.quantity.toLocaleString()} ${item.unit || ''}`;
                 }
@@ -276,7 +276,8 @@ function generateEstimatePDF(data) {
         } else {
             doc.fontSize(8).fillColor('#666666');
             doc.text('有効期限： 御見積提出日より30日間', 50, remarksY + 20);
-            doc.text('支払条件： 御社規定による', 50, remarksY + 35);
+            // 修正: 支払条件の変更
+            doc.text('支払条件： 弊社指定口座への振り込み・現金', 50, remarksY + 35);
         }
 
         doc.end();
