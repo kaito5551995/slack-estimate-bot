@@ -132,16 +132,20 @@ app.view('estimate_modal', async ({ ack, view, body, client }) => {
         const fileName = `見積書_${clientCompany}_${dateStr}.pdf`;
 
         // SlackにPDFをアップロード
-        // 注: files.uploadV2 が不安定なため、レガシーメソッドを使用
-        await client.files.upload({
-            channels: body.user.id,
-            file: pdfBuffer,
-            filename: fileName,
-            title: `見積書 - ${clientCompany}`,
+        // files.uploadは廃止されたため、files.uploadV2を使用
+        // file_uploads配列の中にfileとfilenameを指定する
+        await client.files.uploadV2({
+            channel_id: body.user.id,
             initial_comment: `📄 *見積書を作成しました*\n\n` +
                 `• 宛先: ${clientCompany} / ${clientPerson} 様\n` +
                 `• 品目数: ${items.length}件\n` +
-                `• 合計金額: ¥${total.toLocaleString('ja-JP')}（税込）`
+                `• 合計金額: ¥${total.toLocaleString('ja-JP')}（税込）`,
+            file_uploads: [
+                {
+                    file: pdfBuffer,
+                    filename: fileName,
+                }
+            ]
         });
     } catch (err) {
         console.error('見積書生成エラー:', err);
