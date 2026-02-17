@@ -129,20 +129,27 @@ app.view('estimate_modal', async ({ ack, view, body, client }) => {
         // 日付文字列
         const now = new Date();
         const dateStr = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`;
-        const fileName = `見積書_${clientCompany}_${dateStr}.pdf`;
+        // ファイル名を英語に変更（日本語ファイル名によるエラーの可能性を排除）
+        const fileName = `Estimate_${dateStr}.pdf`;
 
         // DMチャンネルを開いてIDを取得
+        console.log(`Open DM for user: ${body.user.id}`);
         const { channel } = await client.conversations.open({
             users: body.user.id
         });
+
+        console.log(`DM Channel result:`, JSON.stringify(channel));
 
         if (!channel || !channel.id) {
             throw new Error('DMチャンネルを開けませんでした');
         }
 
+        const targetChannelId = String(channel.id);
+        console.log(`Target Channel ID: ${targetChannelId}`);
+
         // SlackにPDFをアップロード
         await client.files.uploadV2({
-            channel_id: channel.id,
+            channel_id: targetChannelId,
             initial_comment: `📄 *見積書を作成しました*\n\n` +
                 `• 宛先: ${clientCompany} / ${clientPerson} 様\n` +
                 `• 品目数: ${items.length}件\n` +
