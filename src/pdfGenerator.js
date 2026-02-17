@@ -153,16 +153,20 @@ function generateEstimatePDF(data) {
         doc.lineWidth(1).strokeColor('black');
 
         let y = tableTop + 20;
-        let pageHeightLimit = 730; // フッター余白確保のため少し早めに改ページ
+        let pageHeightLimit = 680; // 余裕を持って早めに改ページする (730 -> 680)
 
         data.items.forEach((item, index) => {
             doc.font('Gothic').fontSize(10);
 
             // 品名の高さを計算 (折り返し対応)
-            const nameHeight = doc.heightOfString(item.name, { width: colWidth.name });
-            const rowHeight = Math.max(25, nameHeight + 10); // 最小25px、文字数に応じて拡張
+            // lineGapオプションを指定して高さを正確に取得
+            const nameHeight = doc.heightOfString(item.name, { width: colWidth.name, lineGap: 2 });
+            const rowHeight = Math.max(30, nameHeight + 16); // 最小30px、上下パディング +16px
 
-            // ページネーション
+            // ページネーションチェック
+            // 以下のいずれかの場合に改ページ:
+            // 1. この行を描画するとフッター領域(pageHeightLimit)を超える場合
+            // 2. 残りスペースが少なすぎて、この行を描画できても合計欄が入らない可能性がある場合(極端に長い行など)
             if (y + rowHeight > pageHeightLimit) {
                 doc.addPage();
                 y = 50;
@@ -173,17 +177,18 @@ function generateEstimatePDF(data) {
                 doc.text('数  量', colX.quant, y + 6);
                 doc.text('単  価', colX.price, y + 6);
                 doc.text('金  額', colX.amount, y + 6);
+                doc.lineWidth(1).strokeColor('black'); // 線の色を戻す
                 y += 20;
             }
 
-            // 縞模様（Construction Styleなら白地ですっきりが良いかもだが、読みやすさのため薄い線を入れる）
+            // 縞模様
             doc.lineWidth(0.5).moveTo(40, y + rowHeight).lineTo(555, y + rowHeight).strokeColor('#cccccc').stroke();
 
-            // 品名 (垂直中央寄せは難しいので、上詰め+パディング)
-            doc.fillColor('black').text(item.name, colX.name + 10, y + 7, { width: colWidth.name });
+            // 品名
+            doc.fillColor('black').text(item.name, colX.name + 10, y + 8, { width: colWidth.name, lineGap: 2 });
 
             if (item.isExpense) {
-                // 諸経費: 数量単価空欄
+                // 諸経費
             } else {
                 // 数量
                 let qtyText = '';
@@ -193,16 +198,23 @@ function generateEstimatePDF(data) {
                 } else {
                     qtyText = `${item.quantity.toLocaleString()} ${item.unit || ''}`;
                 }
-                doc.text(qtyText, colX.quant, y + 7);
-                doc.text(`¥ ${item.unitPrice.toLocaleString()}`, colX.price, y + 7);
+                doc.text(qtyText, colX.quant, y + 8);
+                doc.text(`¥ ${item.unitPrice.toLocaleString()}`, colX.price, y + 8);
             }
 
-            doc.text(`¥ ${item.amount.toLocaleString()}`, colX.amount, y + 7);
+            doc.text(`¥ ${item.amount.toLocaleString()}`, colX.amount, y + 8);
 
             y += rowHeight;
         });
 
         // ── 合計欄 (表の下) ──
+        // 合計欄を描画するスペースがあるかチェック
+        // 合計欄は約70px必要
+        if (y + 100 > pageHeightLimit) {
+            doc.addPage();
+            y = 50;
+        }
+
         y += 15; // 少しマージンを空ける
 
         // 合計ボックス
@@ -212,8 +224,8 @@ function generateEstimatePDF(data) {
         // 小計
         doc.text('小  計', totalBoxX + 20, y);
         doc.text(`¥ ${totalAmount.toLocaleString()}`, totalBoxX + 190, y);
-        doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + totalBoxW, y + 15).stroke();
-        y += 25; // 行間広め
+        doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + 15).stroke();
+        y += 25;
 
         // 消費税
         doc.text('消費税 (10%)', totalBoxX + 20, y);
@@ -222,7 +234,7 @@ function generateEstimatePDF(data) {
         y += 25;
 
         // 合計
-        doc.font('Mincho').fontSize(12); // 合計は明朝で
+        doc.font('Mincho').fontSize(12);
         doc.text('合  計', totalBoxX + 20, y + 5);
         doc.text(`¥ ${grandTotal.toLocaleString()}`, totalBoxX + 190, y + 5);
 
@@ -232,9 +244,16 @@ function generateEstimatePDF(data) {
 
 
         // ── 備考欄 (枠付き) ──
-        const remarksY = Math.max(y + 45, doc.y + 45);
-        if (remarksY > 720) { doc.addPage(); } // 簡易チェック
+        // 備考欄は約100px必要
+        if (y + 120 > 750) { // ページ末尾ギリギリまで使う
+            doc.addPage();
+            y = 50;
+        } else {
+            y += 40; // 通常の間隔
+        }
 
+        const remarksY = y;
+        doc.lineWidth(0.5).strokeColor('black'); // 線の色を確実に黒に
         doc.rect(40, remarksY, 515, 80).stroke();
         doc.font('Gothic').fontSize(9).text('備  考', 50, remarksY + 5);
 
