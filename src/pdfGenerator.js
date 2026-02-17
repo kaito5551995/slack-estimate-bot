@@ -37,7 +37,7 @@ function generateDocument(type, data) {
 
         // ── タイプ別設定 ──
         let title = '御 見 積 書';
-        let dateLabel = '見積日'; // 今回は日付のみ表示だが、将来用
+        let dateLabel = '見積日';
         let greeting = '下記のとおり御見積申し上げます。';
         let amountLabel = '御見積金額';
 
@@ -56,7 +56,6 @@ function generateDocument(type, data) {
                 break;
             case 'estimate':
             default:
-                // デフォルト
                 break;
         }
 
@@ -88,7 +87,7 @@ function generateDocument(type, data) {
 
         doc.font('Gothic').fontSize(10).text(greeting, 50, startY + 60);
 
-        // 金額 (大きく強調)
+        // 金額
         let totalAmount = 0;
         data.items.forEach(item => totalAmount += (item.amount || item.quantity * item.unitPrice));
         const tax = Math.floor(totalAmount * 0.1);
@@ -102,29 +101,42 @@ function generateDocument(type, data) {
 
         // ── 自社情報 (右側) ──
         const companyX = 360;
+        // 修正: 会社情報エリアの開始位置。
+        // ロゴを companyX, companyY に配置する（日付には被らない）。
+        // 会社名テキスト等はさらに下へずらす。
         const companyY = startY;
 
         // ロゴ描画
         const logoPath = path.join(__dirname, '../assets/logo.png');
+        let logoOffset = 0; // ロゴがある場合、テキストを下にずらす量
+
         if (fs.existsSync(logoPath)) {
             try {
                 const logoW = 120;
-                doc.image(logoPath, companyX + 10, companyY - 25, { width: logoW });
+                // 日付エリア(startYより上)に被らないよう、startY(companyY)を基準に描画
+                doc.image(logoPath, companyX, companyY, { width: logoW });
+
+                // ロゴの高さ分だけテキストをずらす（概算で60px確保）
+                logoOffset = 60;
             } catch (e) { console.error(e); }
         }
 
         // 会社名
+        // ロゴがない場合は companyY + 40 程度から開始していたが、
+        // ロゴがある場合は companyY + logoOffset から開始
+        const companyTextY = companyY + (logoOffset > 0 ? logoOffset : 40);
+
         doc.font('Mincho').fontSize(13);
-        doc.text('株式会社ミナト安全施設', companyX, companyY + 40);
+        doc.text('株式会社ミナト安全施設', companyX, companyTextY);
 
         // 社印
         const sealX = companyX + 110;
-        const sealY = companyY + 25;
+        const sealY = companyTextY - 15;
         drawSeal(doc, sealX, sealY);
 
         // 住所等
         doc.font('Gothic').fontSize(9);
-        const infoY = companyY + 60;
+        const infoY = companyTextY + 20;
         doc.text('代表取締役 湊崎義美', companyX, infoY);
         doc.text('〒680-0914', companyX, infoY + 15);
         doc.text('鳥取県鳥取市南安長１丁目２０番３６号', companyX, infoY + 30);
@@ -249,7 +261,8 @@ function generateDocument(type, data) {
         } else {
             doc.fontSize(8).fillColor('#666666');
             if (type === 'receipt') {
-                doc.text('但し、上記正に領収いたしました。', 50, remarksY + 20);
+                // 修正: 文言変更
+                doc.text('但し、上記、正に領収いたしました。', 50, remarksY + 20);
             } else if (type === 'invoice') {
                 doc.text('お振込期限： 翌月末日', 50, remarksY + 20);
                 doc.text('振込先： 〇〇銀行 〇〇支店 普通 1234567 カ）ミナトアンゼンシセツ', 50, remarksY + 35);
@@ -264,12 +277,6 @@ function generateDocument(type, data) {
     });
 }
 
-/**
- * 社印を描画する関数
- * @param {PDFKit.PDFDocument} doc 
- * @param {number} x 
- * @param {number} y 
- */
 function drawSeal(doc, x, y) {
     const size = 56;
     const color = '#b22222';
@@ -290,7 +297,6 @@ function drawSeal(doc, x, y) {
     doc.font('Mincho');
     doc.fontSize(11);
 
-    // 座標定義: 縦書き3行 (右: ㈱ミナト, 中: 安全施設, 左: 之印)
     const col1X = x + size - 16;
     const col2X = x + size / 2 - 6;
     const col3X = x + 6;
@@ -298,24 +304,20 @@ function drawSeal(doc, x, y) {
     const textY = y + 5;
     const spacing = 12;
 
-    // 右
     doc.text('㈱', col1X, textY);
     doc.text('ミ', col1X, textY + spacing);
     doc.text('ナ', col1X, textY + spacing * 2);
     doc.text('ト', col1X, textY + spacing * 3);
 
-    // 中
     doc.text('安', col2X, textY);
     doc.text('全', col2X, textY + spacing);
     doc.text('施', col2X, textY + spacing * 2);
     doc.text('設', col2X, textY + spacing * 3);
 
-    // 左
     const stampY = textY + spacing + 6;
     doc.text('之', col3X, stampY);
     doc.text('印', col3X, stampY + spacing);
 
-    // ノイズ
     doc.save();
     doc.fillColor('white');
     for (let i = 0; i < 50; i++) {
