@@ -101,8 +101,8 @@ function generateDocument(type, data) {
         if (fs.existsSync(logoPath)) {
             try {
                 // ユーザーがツールで調整した確定座標
-                const defX = 365;
-                const defY = 123;
+                const defX = 361;
+                const defY = 217;
 
                 const logoX = parseFloat(process.env.LOGO_X) || defX;
                 const logoY = parseFloat(process.env.LOGO_Y) || defY;
