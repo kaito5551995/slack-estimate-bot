@@ -96,13 +96,13 @@ function generateDocument(type, data) {
         const sealY = companyTextY - 15;
         drawSeal(doc, sealX, sealY);
 
-        // ロゴ描画 (v5.0 座標を環境変数から取得)
+        // ロゴ描画 (v5.2 確定座標を適用)
         const logoPath = path.join(__dirname, '../assets/logo.png');
         if (fs.existsSync(logoPath)) {
             try {
-                // 環境変数が設定されていない場合のデフォルト値 (v4.3実数値)
-                const defX = companyX + 80;
-                const defY = companyTextY;
+                // ユーザーがツールで調整した確定座標
+                const defX = 365;
+                const defY = 123;
 
                 const logoX = parseFloat(process.env.LOGO_X) || defX;
                 const logoY = parseFloat(process.env.LOGO_Y) || defY;
