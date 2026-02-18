@@ -37,40 +37,29 @@ function generateDocument(type, data) {
 
         // ── タイプ別設定 ──
         let title = '御 見 積 書';
-        let dateLabel = '見積日';
         let greeting = '下記のとおり御見積申し上げます。';
         let amountLabel = '御見積金額';
 
         switch (type) {
             case 'invoice':
                 title = '御 請 求 書';
-                dateLabel = '請求日';
                 greeting = '下記のとおりご請求申し上げます。';
                 amountLabel = '御請求金額';
                 break;
             case 'receipt':
                 title = '領  収  書';
-                dateLabel = '領収日';
                 greeting = '下記正に領収いたしました。';
                 amountLabel = '領収金額';
-                break;
-            case 'estimate':
-            default:
                 break;
         }
 
         // ── ヘッダー ──
-        // タイトル
         doc.font('Mincho').fontSize(22).text(title, { align: 'center' });
-
-        // タイトル下線
         const titleY = doc.y + 5;
         doc.lineWidth(2).moveTo(220, titleY).lineTo(375, titleY).stroke();
         doc.lineWidth(0.5).moveTo(220, titleY + 3).lineTo(375, titleY + 3).stroke();
 
         doc.moveDown(2);
-
-        // 日付
         const now = new Date();
         const dateStr = `${now.getFullYear()}年 ${now.getMonth() + 1}月 ${now.getDate()}日`;
         doc.font('Gothic').fontSize(10).text(dateStr, { align: 'right' });
@@ -81,10 +70,7 @@ function generateDocument(type, data) {
         doc.font('Mincho').fontSize(14);
         doc.text(`${data.clientCompany}  御中`, 50, startY);
         doc.fontSize(11).text(`${data.clientPerson}  様`, 50, startY + 25);
-
-        // 宛先下線
         doc.lineWidth(0.5).moveTo(50, startY + 45).lineTo(300, startY + 45).stroke();
-
         doc.font('Gothic').fontSize(10).text(greeting, 50, startY + 60);
 
         // 金額
@@ -95,36 +81,12 @@ function generateDocument(type, data) {
 
         doc.font('Mincho').fontSize(12).text(amountLabel, 50, startY + 95);
         doc.fontSize(18).text(`¥ ${grandTotal.toLocaleString()} (税込)`, 130, startY + 92);
-
-        // 金額下線
         doc.lineWidth(1).moveTo(50, startY + 115).lineTo(300, startY + 115).stroke();
 
         // ── 自社情報 (右側) ──
         const companyX = 360;
-        // 修正: 会社情報エリアの開始位置。
-        // ロゴを companyX, companyY に配置する（日付には被らない）。
-        // 会社名テキスト等はさらに下へずらす。
         const companyY = startY;
-
-        // ロゴ描画
-        const logoPath = path.join(__dirname, '../assets/logo.png');
-        let logoOffset = 0; // ロゴがある場合、テキストを下にずらす量
-
-        if (fs.existsSync(logoPath)) {
-            try {
-                const logoW = 120;
-                // 日付エリア(startYより上)に被らないよう、startY(companyY)を基準に描画
-                doc.image(logoPath, companyX, companyY, { width: logoW });
-
-                // ロゴの高さ分だけテキストをずらす（概算で60px確保）
-                logoOffset = 60;
-            } catch (e) { console.error(e); }
-        }
-
-        // 会社名
-        // ロゴがない場合は companyY + 40 程度から開始していたが、
-        // ロゴがある場合は companyY + logoOffset から開始
-        const companyTextY = companyY + (logoOffset > 0 ? logoOffset : 40);
+        const companyTextY = companyY + 40;
 
         doc.font('Mincho').fontSize(13);
         doc.text('株式会社ミナト安全施設', companyX, companyTextY);
@@ -133,6 +95,22 @@ function generateDocument(type, data) {
         const sealX = companyX + 110;
         const sealY = companyTextY - 15;
         drawSeal(doc, sealX, sealY);
+
+        // ロゴ描画 (v5.0 座標を環境変数から取得)
+        const logoPath = path.join(__dirname, '../assets/logo.png');
+        if (fs.existsSync(logoPath)) {
+            try {
+                // 環境変数が設定されていない場合のデフォルト値 (v4.3実数値)
+                const defX = companyX + 80;
+                const defY = companyTextY;
+
+                const logoX = parseFloat(process.env.LOGO_X) || defX;
+                const logoY = parseFloat(process.env.LOGO_Y) || defY;
+                const logoW = parseFloat(process.env.LOGO_WIDTH) || 120;
+
+                doc.image(logoPath, logoX, logoY, { width: logoW });
+            } catch (e) { console.error(e); }
+        }
 
         // 住所等
         doc.font('Gothic').fontSize(9);
@@ -156,14 +134,10 @@ function generateDocument(type, data) {
         }
 
         const currentTableTop = doc.y;
-
         const colX = { name: 40, quant: 300, price: 380, amount: 470 };
         const colWidth = { name: 250, quant: 60, price: 80, amount: 80 };
 
-        // ヘッダー背景
         doc.rect(40, currentTableTop, 515, 20).fill('#f0f0f0').stroke();
-
-        // ヘッダー文字
         doc.fillColor('black').font('Gothic').fontSize(10);
         const headerTextY = currentTableTop + 6;
         doc.text('品  名  ・  規  格', colX.name + 10, headerTextY);
@@ -171,18 +145,14 @@ function generateDocument(type, data) {
         doc.text('単  価', colX.price, headerTextY);
         doc.text('金  額', colX.amount, headerTextY);
 
-        doc.lineWidth(1).strokeColor('black');
-
         let y = currentTableTop + 20;
-        let pageHeightLimit = 700;
 
-        data.items.forEach((item, index) => {
+        data.items.forEach((item) => {
             doc.font('Gothic').fontSize(10);
-
             const nameHeight = doc.heightOfString(item.name, { width: colWidth.name, lineGap: 2 });
             const rowHeight = Math.max(30, nameHeight + 16);
 
-            if (y + rowHeight > pageHeightLimit) {
+            if (y + rowHeight > 700) {
                 doc.addPage();
                 y = 50;
                 doc.rect(40, y, 515, 20).fill('#f0f0f0').stroke();
@@ -190,89 +160,55 @@ function generateDocument(type, data) {
                 doc.text('数  量', colX.quant, y + 6);
                 doc.text('単  価', colX.price, y + 6);
                 doc.text('金  額', colX.amount, y + 6);
-                doc.lineWidth(1).strokeColor('black');
                 y += 20;
             }
 
             doc.lineWidth(0.5).moveTo(40, y + rowHeight).lineTo(555, y + rowHeight).strokeColor('#cccccc').stroke();
-
             doc.fillColor('black').text(item.name, colX.name + 10, y + 8, { width: colWidth.name, lineGap: 2 });
 
-            if (item.isExpense || item.isWelfare) {
-                // 空欄
-            } else {
-                let qtyText = '';
-                if (item.unit === '式' || item.unit === '%') {
-                    qtyText = '1 式';
-                } else {
-                    qtyText = `${item.quantity.toLocaleString()} ${item.unit || ''}`;
-                }
+            if (!item.isExpense && !item.isWelfare) {
+                let qtyText = (item.unit === '式' || item.unit === '%') ? '1 式' : `${item.quantity.toLocaleString()} ${item.unit || ''}`;
                 doc.text(qtyText, colX.quant, y + 8);
                 doc.text(`¥ ${item.unitPrice.toLocaleString()}`, colX.price, y + 8);
             }
-
             doc.text(`¥ ${item.amount.toLocaleString()}`, colX.amount, y + 8);
             y += rowHeight;
         });
 
-        // ── 合計欄 ──
-        if (y + 100 > pageHeightLimit) {
-            doc.addPage();
-            y = 50;
-        }
-
         y += 20;
-
         const totalBoxX = 280;
         const totalBoxW = 275;
-
         doc.text('小  計', totalBoxX + 20, y);
         doc.text(`¥ ${totalAmount.toLocaleString()}`, totalBoxX + 190, y);
         doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + 15).stroke();
         y += 25;
-
         doc.text('消費税 (10%)', totalBoxX + 20, y);
         doc.text(`¥ ${tax.toLocaleString()}`, totalBoxX + 190, y);
         doc.lineWidth(0.5).moveTo(totalBoxX, y + 15).lineTo(totalBoxX + totalBoxW, y + 15).stroke();
         y += 25;
-
         doc.font('Mincho').fontSize(12);
         doc.text('合  計', totalBoxX + 20, y + 5);
         doc.text(`¥ ${grandTotal.toLocaleString()}`, totalBoxX + 190, y + 5);
-
         doc.lineWidth(0.5).moveTo(totalBoxX, y + 25).lineTo(totalBoxX + totalBoxW, y + 25).stroke();
         doc.lineWidth(0.5).moveTo(totalBoxX, y + 28).lineTo(totalBoxX + totalBoxW, y + 28).stroke();
 
-        // ── 備考欄 ──
-        if (y + 120 > 750) {
-            doc.addPage();
-            y = 50;
-        } else {
-            y += 40;
-        }
-
-        const remarksY = y;
-        doc.lineWidth(0.5).strokeColor('black');
-        doc.rect(40, remarksY, 515, 80).stroke();
+        y += 40;
+        const remarksY = y > 750 ? (doc.addPage(), 50) : y;
+        doc.rect(40, remarksY, 515, 80).strokeColor('black').stroke();
         doc.font('Gothic').fontSize(9).text('備  考', 50, remarksY + 5);
-
         if (data.remarks) {
             doc.text(data.remarks, 50, remarksY + 20);
         } else {
             doc.fontSize(8).fillColor('#666666');
-            if (type === 'receipt') {
-                // 修正: 文言変更
-                doc.text('但し、上記、正に領収いたしました。', 50, remarksY + 20);
-            } else if (type === 'invoice') {
+            if (type === 'receipt') doc.text('但し、上記、正に領収いたしました。', 50, remarksY + 20);
+            else if (type === 'invoice') {
                 doc.text('お振込期限： 翌月末日', 50, remarksY + 20);
                 doc.text('振込先： 〇〇銀行 〇〇支店 普通 1234567 カ）ミナトアンゼンシセツ', 50, remarksY + 35);
             } else {
-                // estimate
                 doc.text('有効期限： 御見積提出日より30日間', 50, remarksY + 20);
                 doc.text('支払条件： 弊社指定口座への振り込み・現金', 50, remarksY + 35);
             }
         }
-
         doc.end();
     });
 }
@@ -280,54 +216,22 @@ function generateDocument(type, data) {
 function drawSeal(doc, x, y) {
     const size = 56;
     const color = '#b22222';
-
-    doc.save();
-    doc.opacity(0.85);
-    doc.rotate(-2, { origin: [x + size / 2, y + size / 2] });
-
-    // 枠
-    doc.strokeColor(color);
-    doc.lineWidth(2.5);
-    doc.rect(x, y, size, size).stroke();
-    doc.lineWidth(1);
-    doc.rect(x + 3, y + 3, size - 6, size - 6).stroke();
-
-    // 文字
-    doc.fillColor(color);
-    doc.font('Mincho');
-    doc.fontSize(11);
-
+    doc.save().opacity(0.85).rotate(-2, { origin: [x + size / 2, y + size / 2] });
+    doc.strokeColor(color).lineWidth(2.5).rect(x, y, size, size).stroke();
+    doc.lineWidth(1).rect(x + 3, y + 3, size - 6, size - 6).stroke();
+    doc.fillColor(color).font('Mincho').fontSize(11);
     const col1X = x + size - 16;
     const col2X = x + size / 2 - 6;
     const col3X = x + 6;
-
     const textY = y + 5;
     const spacing = 12;
-
-    doc.text('㈱', col1X, textY);
-    doc.text('ミ', col1X, textY + spacing);
-    doc.text('ナ', col1X, textY + spacing * 2);
-    doc.text('ト', col1X, textY + spacing * 3);
-
-    doc.text('安', col2X, textY);
-    doc.text('全', col2X, textY + spacing);
-    doc.text('施', col2X, textY + spacing * 2);
-    doc.text('設', col2X, textY + spacing * 3);
-
-    const stampY = textY + spacing + 6;
-    doc.text('之', col3X, stampY);
-    doc.text('印', col3X, stampY + spacing);
-
-    doc.save();
+    doc.text('㈱', col1X, textY); doc.text('ミ', col1X, textY + spacing); doc.text('ナ', col1X, textY + spacing * 2); doc.text('ト', col1X, textY + spacing * 3);
+    doc.text('安', col2X, textY); doc.text('全', col2X, textY + spacing); doc.text('施', col2X, textY + spacing * 2); doc.text('設', col2X, textY + spacing * 3);
+    doc.text('之', col3X, textY + spacing + 6); doc.text('印', col3X, textY + spacing * 2 + 6);
     doc.fillColor('white');
     for (let i = 0; i < 50; i++) {
-        const nx = x + Math.random() * size;
-        const ny = y + Math.random() * size;
-        const r = Math.random() * 1.5;
-        doc.circle(nx, ny, r).fill();
+        doc.circle(x + Math.random() * size, y + Math.random() * size, Math.random() * 1.5).fill();
     }
-    doc.restore();
-
     doc.restore();
 }
 

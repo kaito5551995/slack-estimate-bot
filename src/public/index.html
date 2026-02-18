@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ロゴ位置調整ツール</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h1 { font-size: 24px; color: #1a73e8; margin-bottom: 10px; }
+        p.desc { font-size: 14px; color: #666; margin-bottom: 25px; line-height: 1.6; }
+        
+        .preview-area {
+            position: relative;
+            width: 595px; /* A4 width in px (approx) */
+            height: 400px;
+            border: 2px solid #ddd;
+            background: white;
+            margin: 0 auto 30px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        /* Guide lines */
+        .guide-h { position: absolute; width: 100%; height: 1px; border-top: 1px dashed #eee; left: 0; pointer-events: none; }
+        .guide-v { position: absolute; height: 100%; width: 1px; border-left: 1px dashed #eee; top: 0; pointer-events: none; }
+
+        .dummy-text { position: absolute; font-family: serif; color: #ccc; pointer-events: none; }
+        .dummy-date { right: 40px; top: 80px; font-size: 14px; }
+        .dummy-company { right: 115px; top: 140px; font-size: 18px; color: #999; font-weight: bold; border: 1px solid #eee; padding: 5px; }
+        .dummy-seal { right: 55px; top: 125px; width: 56px; height: 56px; border: 2px double rgba(178, 34, 34, 0.3); border-radius: 4px; color: rgba(178, 34, 34, 0.3); display: flex; align-items: center; justify-content: center; font-size: 10px; }
+
+        #logo {
+            position: absolute;
+            cursor: move;
+            user-select: none;
+            z-index: 10;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+        #logo:hover { border-color: #1a73e8; }
+        #logo.dragging { opacity: 0.8; border-color: #1a73e8; }
+
+        .controls { background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #1a73e8; }
+        .coords { font-size: 18px; font-weight: bold; display: flex; gap: 30px; margin-bottom: 20px; }
+        .coords span { color: #d93025; }
+        
+        .instructions { font-size: 14px; line-height: 1.8; }
+        code { background: #eee; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; }
+        
+        button { background: #1a73e8; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+        button:hover { background: #1765cf; }
+
+        .alert { background: #fff3e0; border: 1px solid #ffe0b2; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>ロゴ位置調整ツール (v5.0)</h1>
+    <p class="desc">
+        ロゴをマウスでドラッグして、最適な位置を決めてください。<br>
+        「現在の座標」をコピーして、Botの設定（環境変数）に登録することで反映されます。
+    </p>
+
+    <div class="preview-area" id="canvas">
+        <div class="guide-h" style="top: 80px;"></div>
+        <div class="guide-v" style="left: 360px;"></div>
+        
+        <div class="dummy-text dummy-date">2026年 2月 18日</div>
+        <div class="dummy-text dummy-company" id="ref-company">株式会社ミナト安全施設</div>
+        <div class="dummy-text dummy-seal">社印</div>
+
+        <img src="/assets/logo.png" id="logo" alt="Logo" width="120">
+    </div>
+
+    <div class="controls">
+        <div class="coords">
+            <div>LOGO_X: <span id="valX">---</span></div>
+            <div>LOGO_Y: <span id="valY">---</span></div>
+        </div>
+        
+        <div class="instructions">
+            <strong>設定手順:</strong><br>
+            1. ロゴをマウスでドラッグして、理想の位置（社名の直上など）に合わせます。<br>
+            2. 上記の <code>X</code> <code>Y</code> の数値をコピーします。<br>
+            3. Render.com のアプリ設定画面（Environment）の <b>LOGO_X</b> と <b>LOGO_Y</b> に貼り付けて保存してください。<br>
+            <small>※反映には数分かかります。</small>
+        </div>
+    </div>
+
+    <div class="alert">
+        💡 <b>ヒント:</b> 角印（点線の枠）と被る位置に置いても問題ありません。会社名の文字が隠れない程度に調整するのがおすすめです。
+    </div>
+</div>
+
+<script>
+    const logo = document.getElementById('logo');
+    const canvas = document.getElementById('canvas');
+    const valX = document.getElementById('valX');
+    const valY = document.getElementById('valY');
+
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    // PDF座標系への換算 (PDFKitのデフォルトマージンやスケールを考慮)
+    // Canvas内での座標をそのままPDF座標として扱う（1px = 1pt 相当）
+    function updateCoords() {
+        const x = parseInt(logo.style.left);
+        const y = parseInt(logo.style.top);
+        valX.innerText = x;
+        valY.innerText = y;
+    }
+
+    // 初期位置 (v4.3デフォルト値)
+    logo.style.left = '440px'; // 360 + 80
+    logo.style.top = '140px'; 
+    updateCoords();
+
+    logo.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        logo.classList.add('dragging');
+        offsetX = e.clientX - logo.offsetLeft;
+        offsetY = e.clientY - logo.offsetTop;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        let x = e.clientX - offsetX;
+        let y = e.clientY - offsetY;
+
+        // 境界制限
+        x = Math.max(0, Math.min(x, canvas.offsetWidth - logo.offsetWidth));
+        y = Math.max(0, Math.min(y, canvas.offsetHeight - logo.offsetHeight));
+
+        logo.style.left = x + 'px';
+        logo.style.top = y + 'px';
+        updateCoords();
+    });
+
+    document.addEventListener('mouseup', () => {
+        isDragging = false;
+        logo.classList.remove('dragging');
+    });
+</script>
+
+</body>
+</html>
