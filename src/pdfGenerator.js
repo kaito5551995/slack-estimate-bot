@@ -91,16 +91,11 @@ function generateDocument(type, data) {
         doc.font('Mincho').fontSize(13);
         doc.text('株式会社ミナト安全施設', companyX, companyTextY);
 
-        // 社印
-        const sealX = companyX + 110;
-        const sealY = companyTextY - 15;
-        drawSeal(doc, sealX, sealY);
-
-        // ロゴ描画 (v5.2 確定座標を適用)
+        // ロゴ描画 (v5.4 最背面に配置)
         const logoPath = path.join(__dirname, '../assets/logo.png');
         if (fs.existsSync(logoPath)) {
             try {
-                // ユーザーがツールで調整した確定座標
+                // 確定座標 (v5.3)
                 const defX = 361;
                 const defY = 217;
 
@@ -111,6 +106,11 @@ function generateDocument(type, data) {
                 doc.image(logoPath, logoX, logoY, { width: logoW });
             } catch (e) { console.error(e); }
         }
+
+        // 社印 (ロゴの上に重ねる)
+        const sealX = companyX + 110;
+        const sealY = companyTextY - 15;
+        drawSeal(doc, sealX, sealY);
 
         // 住所等
         doc.font('Gothic').fontSize(9);
