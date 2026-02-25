@@ -1,8 +1,10 @@
 require('dotenv').config();
 const { App, ExpressReceiver } = require('@slack/bolt');
-const express = require('express');
+const { WebClient } = require('@slack/web-api');
 const path = require('path');
 const { generateDocument } = require('./pdfGenerator');
+
+const web = new WebClient(process.env.SLACK_BOT_TOKEN);
 
 // ExpressReceiverを使用して、通常のExpressとしても動作するようにする
 const receiver = new ExpressReceiver({
@@ -15,6 +17,7 @@ const app = new App({
 });
 
 // 静的ファイルの配信
+const express = require('express');
 receiver.app.use('/assets', express.static(path.join(__dirname, '../assets')));
 receiver.app.use(express.static(path.join(__dirname, 'public')));
 
@@ -96,9 +99,18 @@ app.command('/見積もり', async ({ ack, body, client }) => {
 
 app.command('/請求書', async ({ ack, body, client }) => {
     await ack();
+    const modalView = getModalView('invoice', '請求書作成', 'doc_creation_modal');
+
+    // 備考欄にデフォルト値を設定
+    const defaultRemarks = "振込先\n山陰合同銀行 鳥取営業部(053)\n普通　4581917\n株式会社ミナト安全施設";
+    const remarksBlock = modalView.blocks.find(b => b.block_id === 'remarks');
+    if (remarksBlock) {
+        remarksBlock.element.initial_value = defaultRemarks;
+    }
+
     await client.views.open({
         trigger_id: body.trigger_id,
-        view: getModalView('invoice', '請求書作成', 'doc_creation_modal')
+        view: modalView
     });
 });
 
@@ -220,9 +232,6 @@ app.view('doc_creation_modal', async ({ ack, view, body, client }) => {
         });
 
         const targetChannelId = String(channel.id);
-
-        const { WebClient } = require('@slack/web-api');
-        const web = new WebClient(process.env.SLACK_BOT_TOKEN);
 
         await web.files.uploadV2({
             channel_id: targetChannelId,

@@ -95,9 +95,9 @@ function generateDocument(type, data) {
         const logoPath = path.join(__dirname, '../assets/logo.png');
         if (fs.existsSync(logoPath)) {
             try {
-                // 確定座標 (v5.3)
-                const defX = 361;
-                const defY = 217;
+                // 確定座標 (v5.5)
+                const defX = 357;
+                const defY = 180;
 
                 const logoX = parseFloat(process.env.LOGO_X) || defX;
                 const logoY = parseFloat(process.env.LOGO_Y) || defY;
@@ -120,6 +120,10 @@ function generateDocument(type, data) {
         doc.text('鳥取県鳥取市南安長１丁目２０番３６号', companyX, infoY + 30);
         doc.text('TEL: 0857-30-1121', companyX, infoY + 45);
         doc.text('MAIL: info@minato-anzen.com', companyX, infoY + 60);
+
+        if (type === 'invoice') {
+            doc.text('登録番号：T-4270001009349', companyX, infoY + 90);
+        }
 
         // ── 明細表 ──
         const minTableTop = 280;
@@ -202,8 +206,10 @@ function generateDocument(type, data) {
             doc.fontSize(8).fillColor('#666666');
             if (type === 'receipt') doc.text('但し、上記、正に領収いたしました。', 50, remarksY + 20);
             else if (type === 'invoice') {
-                doc.text('お振込期限： 翌月末日', 50, remarksY + 20);
-                doc.text('振込先： 〇〇銀行 〇〇支店 普通 1234567 カ）ミナトアンゼンシセツ', 50, remarksY + 35);
+                doc.text('振込先', 50, remarksY + 20);
+                doc.text('山陰合同銀行 鳥取営業部(053)', 50, remarksY + 30);
+                doc.text('普通　4581917', 50, remarksY + 40);
+                doc.text('株式会社ミナト安全施設', 50, remarksY + 50);
             } else {
                 doc.text('有効期限： 御見積提出日より30日間', 50, remarksY + 20);
                 doc.text('支払条件： 弊社指定口座への振り込み・現金', 50, remarksY + 35);
